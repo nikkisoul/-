@@ -187,39 +187,172 @@ elif page == "📥 数据管理":
         st.markdown("### 📤 批量数据上传")
         st.markdown("上传Excel或CSV文件以导入数据")
         
+        # 添加文件格式说明
+        with st.expander("📋 查看文件格式要求"):
+            st.markdown("""
+            **采购计划数据应包含以下列:**
+            - 计划编号, 物料编号, 物料名称, 物料类型, 供应商, 架次, 需求数量, 需求日期
+            
+            **到货数据应包含以下列:**
+            - 到货编号, 物料编号, 架次, 已到货数量, 实际到货日期
+            
+            **注意事项:**
+            - 支持CSV和Excel(.xlsx)格式
+            - 文件大小不超过200MB
+            - 日期格式建议: YYYY-MM-DD (例如: 2024-01-01)
+            - 确保文件编码为UTF-8(CSV文件)
+            """)
+        
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("#### 采购计划数据")
-            uploaded_plans = st.file_uploader("上传采购计划", type=['csv', 'xlsx'], key='plans_upload')
+            uploaded_plans = st.file_uploader(
+                "上传采购计划",
+                type=['csv', 'xlsx', 'xls'],
+                key='plans_upload',
+                help="支持CSV和Excel格式，最大200MB"
+            )
+            
             if uploaded_plans is not None:
                 try:
+                    # 显示文件信息
+                    file_details = {
+                        "文件名": uploaded_plans.name,
+                        "文件大小": f"{uploaded_plans.size / 1024:.2f} KB",
+                        "文件类型": uploaded_plans.type
+                    }
+                    st.info(f"📄 正在处理: {uploaded_plans.name}")
+                    
+                    # 读取文件
                     if uploaded_plans.name.endswith('.csv'):
-                        df = pd.read_csv(uploaded_plans)
+                        # 尝试不同的编码
+                        try:
+                            df = pd.read_csv(uploaded_plans, encoding='utf-8')
+                        except UnicodeDecodeError:
+                            uploaded_plans.seek(0)  # 重置文件指针
+                            df = pd.read_csv(uploaded_plans, encoding='gbk')
+                    elif uploaded_plans.name.endswith(('.xlsx', '.xls')):
+                        df = pd.read_excel(uploaded_plans, engine='openpyxl')
                     else:
-                        df = pd.read_excel(uploaded_plans)
-                    st.session_state.procurement_plans = df
-                    st.session_state.data_loaded = True
-                    st.success(f"✅ 成功上传 {len(df)} 条采购计划记录")
-                    st.dataframe(df.head())
+                        st.error("❌ 不支持的文件格式")
+                        df = None
+                    
+                    if df is not None:
+                        # 验证必要的列
+                        required_cols = ['物料编号', '架次']
+                        missing_cols = [col for col in required_cols if col not in df.columns]
+                        
+                        if missing_cols:
+                            st.warning(f"⚠️ 缺少必要的列: {', '.join(missing_cols)}")
+                            st.info("当前文件包含的列:")
+                            st.write(list(df.columns))
+                        
+                        # 保存到session state
+                        st.session_state.procurement_plans = df
+                        st.session_state.data_loaded = True
+                        st.success(f"✅ 成功上传 {len(df)} 条采购计划记录")
+                        
+                        # 显示数据预览
+                        st.markdown("**数据预览:**")
+                        st.dataframe(df.head(10))
+                        
+                        # 显示数据统计
+                        st.markdown("**数据统计:**")
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("总记录数", len(df))
+                        with col_b:
+                            st.metric("列数", len(df.columns))
+                        with col_c:
+                            if '架次' in df.columns:
+                                st.metric("架次数", df['架次'].nunique())
+                        
                 except Exception as e:
                     st.error(f"❌ 上传失败: {str(e)}")
+                    st.error(f"错误类型: {type(e).__name__}")
+                    
+                    # 提供详细的错误信息
+                    if "openpyxl" in str(e):
+                        st.warning("💡 提示: 请确保已安装openpyxl库。运行: pip install openpyxl")
+                    elif "encoding" in str(e).lower():
+                        st.warning("💡 提示: 文件编码问题。请确保CSV文件使用UTF-8或GBK编码")
+                    
+                    # 显示详细错误信息（调试用）
+                    with st.expander("查看详细错误信息"):
+                        st.code(str(e))
         
         with col2:
             st.markdown("#### 到货数据")
-            uploaded_deliveries = st.file_uploader("上传到货数据", type=['csv', 'xlsx'], key='deliveries_upload')
+            uploaded_deliveries = st.file_uploader(
+                "上传到货数据",
+                type=['csv', 'xlsx', 'xls'],
+                key='deliveries_upload',
+                help="支持CSV和Excel格式，最大200MB"
+            )
+            
             if uploaded_deliveries is not None:
                 try:
+                    # 显示文件信息
+                    st.info(f"📄 正在处理: {uploaded_deliveries.name}")
+                    
+                    # 读取文件
                     if uploaded_deliveries.name.endswith('.csv'):
-                        df = pd.read_csv(uploaded_deliveries)
+                        # 尝试不同的编码
+                        try:
+                            df = pd.read_csv(uploaded_deliveries, encoding='utf-8')
+                        except UnicodeDecodeError:
+                            uploaded_deliveries.seek(0)  # 重置文件指针
+                            df = pd.read_csv(uploaded_deliveries, encoding='gbk')
+                    elif uploaded_deliveries.name.endswith(('.xlsx', '.xls')):
+                        df = pd.read_excel(uploaded_deliveries, engine='openpyxl')
                     else:
-                        df = pd.read_excel(uploaded_deliveries)
-                    st.session_state.deliveries = df
-                    st.session_state.data_loaded = True
-                    st.success(f"✅ 成功上传 {len(df)} 条到货记录")
-                    st.dataframe(df.head())
+                        st.error("❌ 不支持的文件格式")
+                        df = None
+                    
+                    if df is not None:
+                        # 验证必要的列
+                        required_cols = ['物料编号', '架次']
+                        missing_cols = [col for col in required_cols if col not in df.columns]
+                        
+                        if missing_cols:
+                            st.warning(f"⚠️ 缺少必要的列: {', '.join(missing_cols)}")
+                            st.info("当前文件包含的列:")
+                            st.write(list(df.columns))
+                        
+                        # 保存到session state
+                        st.session_state.deliveries = df
+                        st.session_state.data_loaded = True
+                        st.success(f"✅ 成功上传 {len(df)} 条到货记录")
+                        
+                        # 显示数据预览
+                        st.markdown("**数据预览:**")
+                        st.dataframe(df.head(10))
+                        
+                        # 显示数据统计
+                        st.markdown("**数据统计:**")
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("总记录数", len(df))
+                        with col_b:
+                            st.metric("列数", len(df.columns))
+                        with col_c:
+                            if '架次' in df.columns:
+                                st.metric("架次数", df['架次'].nunique())
+                        
                 except Exception as e:
                     st.error(f"❌ 上传失败: {str(e)}")
+                    st.error(f"错误类型: {type(e).__name__}")
+                    
+                    # 提供详细的错误信息
+                    if "openpyxl" in str(e):
+                        st.warning("💡 提示: 请确保已安装openpyxl库。运行: pip install openpyxl")
+                    elif "encoding" in str(e).lower():
+                        st.warning("💡 提示: 文件编码问题。请确保CSV文件使用UTF-8或GBK编码")
+                    
+                    # 显示详细错误信息（调试用）
+                    with st.expander("查看详细错误信息"):
+                        st.code(str(e))
     
     with tab2:
         st.markdown("### ✏️ 手动输入数据")
